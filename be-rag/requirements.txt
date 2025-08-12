@@ -1,0 +1,10 @@
+pypdf
+langchain
+chromadb
+pytest
+boto3
+langchain-ollama
+langchain-chroma
+flask
+flask-cors
+werkzeug
