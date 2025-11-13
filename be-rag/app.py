@@ -83,6 +83,18 @@ def chat():
     except Exception as e:
         return jsonify({'error': f'Chat failed: {str(e)}'}), 500
 
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({
+        'message': 'RAG Backend API',
+        'endpoints': {
+            '/': 'API information',
+            '/health': 'Health check',
+            '/upload': 'Upload PDF files (POST)',
+            '/chat': 'Query the RAG system (POST)'
+        }
+    }), 200
+
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy'}), 200
