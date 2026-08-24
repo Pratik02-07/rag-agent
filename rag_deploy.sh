@@ -280,9 +280,46 @@ deploy() {
 	compose build
 	success "Docker images built successfully."
 
+	log "Starting Ollama..."
+	compose up -d ollama
+	wait_for_ollama
+	provision_ollama_models
+
 	log "Starting RAG Agent containers..."
 	compose up -d
+	wait_for_http "Frontend" "http://127.0.0.1:3000/" 60
+	wait_for_http "Backend" "http://127.0.0.1:5000/api/health" 60
 	success "Docker Compose started."
+}
+
+wait_for_http() {
+	local service_name=$1 url=$2 max_attempts=$3 attempt
+	for attempt in $(seq 1 "$max_attempts"); do
+		if curl --fail --silent --show-error --max-time 5 "$url" >/dev/null; then
+			success "${service_name} is responding."
+			return
+		fi
+		sleep 2
+	done
+	compose ps
+	compose logs --tail=100 "$(printf '%s' "$service_name" | tr '[:upper:]' '[:lower:]')" 2>/dev/null || true
+	fail "${service_name} did not respond at ${url}."
+}
+
+wait_for_ollama() {
+	local attempt health
+	for attempt in $(seq 1 30); do
+		health="$(docker inspect --format '{{.State.Health.Status}}' ollama 2>/dev/null || true)"
+		if [ "$health" = healthy ]; then
+			success "Ollama is healthy."
+			return
+		fi
+		if [ "$health" = unhealthy ]; then
+			fail "Ollama failed its health check. Check: docker logs ollama"
+		fi
+		sleep 2
+	done
+	fail "Ollama did not become healthy within 60 seconds. Check: docker logs ollama"
 }
 
 provision_ollama_models() {
@@ -352,7 +389,6 @@ clone_repository
 check_project
 configure_nginx
 deploy
-provision_ollama_models
 check_containers
 check_backend_health
 check_nginx_proxy
