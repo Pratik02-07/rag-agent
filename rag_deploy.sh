@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Pratik02-07/rag-agent.git}"
+MIN_FREE_GB="${MIN_FREE_GB:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [ -z "${APP_DIR+x}" ]; then
 	if [ -f "${SCRIPT_DIR}/docker-compose.yml" ] || [ -f "${SCRIPT_DIR}/compose.yml" ]; then
@@ -145,6 +146,21 @@ install_nginx() {
 	success "Nginx is installed."
 }
 
+check_disk_space() {
+	local docker_root available_kb required_kb
+	docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || printf '/')"
+	available_kb="$(df -Pk "$docker_root" | awk 'NR == 2 { print $4 }')"
+	required_kb=$((MIN_FREE_GB * 1024 * 1024))
+
+	log "Checking available Docker disk space..."
+	printf '[INFO] Docker storage: %s (%s GB free)\n' \
+		"$docker_root" "$((available_kb / 1024 / 1024))"
+	if [ "$available_kb" -lt "$required_kb" ]; then
+		fail "At least ${MIN_FREE_GB} GB free is required on the Docker filesystem. Clean Docker data or increase the VM disk, then retry."
+	fi
+	success "Enough Docker disk space is available."
+}
+
 clone_repository() {
 	if [ -f "${APP_DIR}/docker-compose.yml" ] || [ -f "${APP_DIR}/compose.yml" ]; then
 		log "Using existing repository at ${APP_DIR}."
@@ -223,6 +239,7 @@ install_git
 install_docker
 install_docker_compose
 install_nginx
+check_disk_space
 clone_repository
 check_project
 deploy
