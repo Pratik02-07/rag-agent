@@ -29,7 +29,7 @@ services:
 
   frontend:
     build:
-      context: ./fe-rag
+      context: ./Fe-rag
     container_name: rag-frontend
     restart: unless-stopped
     ports:
