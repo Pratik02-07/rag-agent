@@ -285,6 +285,13 @@ deploy() {
 	success "Docker Compose started."
 }
 
+provision_ollama_models() {
+	log "Ensuring required Ollama models are available..."
+	docker exec ollama ollama pull "${OLLAMA_MODEL:-gemma2:2b}"
+	docker exec ollama ollama pull "${EMBEDDING_MODEL:-nomic-embed-text}"
+	success "Required Ollama models are available."
+}
+
 check_containers() {
 	local expected service running_services missing=false
 	expected="$(compose config --services)"
@@ -328,6 +335,7 @@ clone_repository
 check_project
 configure_nginx
 deploy
+provision_ollama_models
 check_containers
 check_nginx_proxy
 

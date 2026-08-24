@@ -7,7 +7,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from ollama import Client
 
-from config import CHROMA_PATH, DATA_PATH, OLLAMA_BASE_URL
+from config import CHROMA_PATH, DATA_PATH, EMBEDDING_MODEL, OLLAMA_BASE_URL, OLLAMA_MODEL
 from generation import generate_answer
 from ingestion import delete_pdf_file, ingest_pdf_file, ensure_storage_paths, list_uploaded_files
 from retrieval import NoRelevantDocumentsError, retrieve_documents
@@ -24,7 +24,13 @@ ensure_storage_paths()
 def check_ollama_health() -> bool:
     try:
         client = Client(host=OLLAMA_BASE_URL)
-        client.list()
+        models = client.list().get("models", [])
+        available_models = {model.get("name") for model in models}
+        required_models = {OLLAMA_MODEL, EMBEDDING_MODEL}
+        missing_models = required_models - available_models
+        if missing_models:
+            logger.error("Ollama models are missing: %s", ", ".join(sorted(missing_models)))
+            return False
         return True
     except Exception:
         logger.exception("Ollama health check failed")
@@ -119,7 +125,7 @@ def query_documents():
         }), 200
     except Exception:
         logger.exception("Query failed")
-        return jsonify({"error": "Unable to answer the question right now."}), 500
+        return jsonify({"error": "Unable to answer the question right now. Check that Ollama is running and its models are available."}), 500
 
 
 @app.route("/api/upload", methods=["POST"])

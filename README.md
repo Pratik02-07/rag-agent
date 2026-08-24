@@ -88,7 +88,7 @@ From the repository root:
 docker compose up -d --build
 ```
 
-Download the required models into the persistent Ollama volume:
+The deployment script downloads the required models automatically. For manual Docker Compose deployments, download them into the persistent Ollama volume:
 
 ```bash
 docker exec -it ollama ollama pull gemma2:2b
