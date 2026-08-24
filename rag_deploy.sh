@@ -306,6 +306,18 @@ check_containers() {
 	success "All RAG Agent services are running."
 }
 
+check_nginx_proxy() {
+	if ! command_exists curl || ! command_exists nginx; then
+		return
+	fi
+
+	log "Checking Nginx application proxy..."
+	if ! curl --fail --silent --show-error --max-time 10 http://127.0.0.1/ >/dev/null; then
+		fail "Nginx is not serving the frontend at http://127.0.0.1/. Check the Nginx configuration and frontend logs."
+	fi
+	success "Nginx is serving the frontend on port 80."
+}
+
 detect_os
 install_git
 install_docker
@@ -317,7 +329,9 @@ check_project
 configure_nginx
 deploy
 check_containers
+check_nginx_proxy
 
 printf '\n[SUCCESS] RAG Agent deployment completed.\n'
-printf 'Application: http://localhost:3000\n'
+printf 'Application: http://localhost/\n'
+printf 'Frontend direct: http://localhost:3000\n'
 printf 'Backend: http://localhost:5000/api/health\n'
