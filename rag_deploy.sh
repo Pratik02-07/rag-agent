@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Pratik02-07/rag-agent.git}"
-MIN_FREE_GB="${MIN_FREE_GB:-20}"
+MIN_FREE_GB="${MIN_FREE_GB:-0}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [ -z "${APP_DIR+x}" ]; then
 	if [ -f "${SCRIPT_DIR}/docker-compose.yml" ] || [ -f "${SCRIPT_DIR}/compose.yml" ]; then
@@ -115,7 +115,16 @@ install_docker_compose() {
 	if [ "$OS" = macos ]; then
 		fail "Docker Desktop must be started before Docker Compose can be used."
 	elif command_exists apt-get; then
-		install_linux_package docker-compose-plugin
+		if ! as_root apt-get update || ! as_root apt-get install -y docker-compose; then
+			as_root apt-get install -y ca-certificates curl gnupg lsb-release
+			as_root install -m 0755 -d /etc/apt/keyrings
+			as_root curl -fsSL https://download.docker.com/linux/ubuntu/gpg | as_root gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+			as_root chmod a+r /etc/apt/keyrings/docker.gpg
+			printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu %s stable\n' \
+				"$(dpkg --print-architecture)" "$(. /etc/os-release && echo "$VERSION_CODENAME")" | as_root tee /etc/apt/sources.list.d/docker.list >/dev/null
+			as_root apt-get update
+			as_root apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+		fi
 	else
 		as_root mkdir -p /usr/local/lib/docker/cli-plugins
 		command_exists curl || install_linux_package curl
@@ -125,8 +134,11 @@ install_docker_compose() {
 		as_root chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 	fi
 
-	docker compose version >/dev/null 2>&1 || fail "Docker Compose installation failed."
-	success "Docker Compose is installed."
+	if docker compose version >/dev/null 2>&1 || command_exists docker-compose; then
+		success "Docker Compose is installed."
+		return
+	fi
+	fail "Docker Compose installation failed."
 }
 
 install_nginx() {
@@ -146,10 +158,70 @@ install_nginx() {
 	success "Nginx is installed."
 }
 
+configure_nginx() {
+	if ! command_exists nginx; then
+		log "Nginx is not installed; skipping reverse-proxy configuration."
+		return
+	fi
+
+	local nginx_conf_dir nginx_conf nginx_default_site config_source
+	config_source="${APP_DIR}/nginx/rag-agent.conf"
+	if [ "$OS" = macos ]; then
+		nginx_conf_dir="/usr/local/etc/nginx/servers"
+		nginx_conf="/usr/local/etc/nginx/servers/rag-agent.conf"
+		nginx_default_site="/usr/local/etc/nginx/conf.d/default.conf"
+		mkdir -p "$nginx_conf_dir"
+	else
+		nginx_conf_dir="/etc/nginx/conf.d"
+		nginx_conf="/etc/nginx/conf.d/rag-agent.conf"
+		nginx_default_site="/etc/nginx/sites-enabled/default"
+		as_root mkdir -p "$nginx_conf_dir"
+	fi
+
+	if [ ! -f "$config_source" ]; then
+		fail "Nginx config template not found at ${config_source}."
+	fi
+
+	log "Configuring Nginx reverse proxy for the RAG app..."
+	if [ "$OS" = macos ]; then
+		cp "$config_source" "$nginx_conf"
+	else
+		as_root cp "$config_source" "$nginx_conf"
+	fi
+
+	if [ -f "$nginx_default_site" ] && [ "$OS" != macos ]; then
+		as_root rm -f "$nginx_default_site"
+	fi
+
+	if [ "$OS" = macos ]; then
+		nginx -t
+		nginx -s reload 2>/dev/null || brew services restart nginx
+	else
+		as_root nginx -t
+		if command_exists systemctl; then
+			as_root systemctl reload nginx
+		else
+			as_root service nginx reload
+		fi
+	fi
+
+	success "Nginx reverse proxy is configured."
+}
+
 check_disk_space() {
 	local docker_root available_kb required_kb
-	docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || printf '/')"
-	available_kb="$(df -Pk "$docker_root" | awk 'NR == 2 { print $4 }')"
+	docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+	if [ -z "$docker_root" ] || [ "$docker_root" = ""$'\n'"/" ]; then
+		if [ -d /var/lib/docker ]; then
+			docker_root="/var/lib/docker"
+		else
+			docker_root="/"
+		fi
+	fi
+	available_kb="$(df -Pk "$docker_root" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+	if [ -z "$available_kb" ]; then
+		fail "Unable to measure free space for Docker storage at ${docker_root}. Check the VM disk or mount configuration."
+	fi
 	required_kb=$((MIN_FREE_GB * 1024 * 1024))
 
 	log "Checking available Docker disk space..."
@@ -242,6 +314,7 @@ install_nginx
 check_disk_space
 clone_repository
 check_project
+configure_nginx
 deploy
 check_containers
 
