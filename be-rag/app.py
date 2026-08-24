@@ -27,7 +27,12 @@ def check_ollama_health() -> bool:
         models = client.list().get("models", [])
         available_models = {model.get("name") for model in models}
         required_models = {OLLAMA_MODEL, EMBEDDING_MODEL}
-        missing_models = required_models - available_models
+        missing_models = {
+            model
+            for model in required_models
+            if model not in available_models
+            and (":" in model or f"{model}:latest" not in available_models)
+        }
         if missing_models:
             logger.error("Ollama models are missing: %s", ", ".join(sorted(missing_models)))
             return False

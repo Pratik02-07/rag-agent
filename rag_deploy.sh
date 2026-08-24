@@ -327,7 +327,8 @@ provision_ollama_models() {
 	local model
 	log "Checking required Ollama models..."
 	for model in "${OLLAMA_MODEL:-gemma2:2b}" "${EMBEDDING_MODEL:-nomic-embed-text}"; do
-		if docker exec ollama ollama list | awk 'NR > 1 { print $1 }' | grep -Fxq "$model"; then
+		if docker exec ollama ollama list | awk 'NR > 1 { print $1 }' | grep -Fxq "$model" || \
+			{ [[ "$model" != *:* ]] && docker exec ollama ollama list | awk 'NR > 1 { print $1 }' | grep -Fxq "${model}:latest"; }; then
 			success "Ollama model is already available: ${model}"
 		else
 			log "Ollama model is missing; pulling ${model}..."
