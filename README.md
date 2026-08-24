@@ -11,8 +11,8 @@ A full-stack application that enables users to upload PDF documents and interact
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
-  - [Frontend Setup](#frontend-setup)
-  - [Backend Setup](#backend-setup)
+  - [Docker Setup](#docker-setup)
+  - [API](#api)
 
 
 ## Overview
@@ -74,11 +74,74 @@ rag-agent/
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
-- Python 3.8+
-- pip
-- npm or yarn
-- ollama
+- Docker Desktop or Docker Engine with Docker Compose
+- At least 8 GB RAM is recommended for CPU-based Ollama inference
+- At least 30 GB of available disk space for images, models, PDFs, and ChromaDB
+
+### Docker Setup
+
+The recommended way to run the complete application is Docker Compose. The stack includes the Next.js frontend, Flask/Gunicorn backend, ChromaDB persistence, uploaded-PDF persistence, and Ollama.
+
+From the repository root:
+
+```bash
+docker compose up -d --build
+```
+
+Download the required models into the persistent Ollama volume:
+
+```bash
+docker exec -it ollama ollama pull gemma2:2b
+docker exec -it ollama ollama pull nomic-embed-text
+```
+
+Open the application at [http://localhost:3000](http://localhost:3000).
+
+Check service and backend health:
+
+```bash
+docker compose ps
+curl http://localhost:5000/api/health
+```
+
+On Windows PowerShell, use this health check instead:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/api/health
+```
+
+Useful commands:
+
+```bash
+# Follow service logs
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f ollama
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# Stop containers while preserving data
+docker compose down
+```
+
+The named volumes preserve uploaded PDFs, ChromaDB, and Ollama models:
+
+- `rag-upload-data`
+- `rag-chroma-data`
+- `ollama-data`
+
+Do not use `docker compose down -v` unless you intentionally want to delete all persistent application data.
+
+### API
+
+The backend is available at [http://localhost:5000](http://localhost:5000):
+
+- `GET /api/health` checks Ollama and ChromaDB availability.
+- `POST /api/upload` accepts a PDF using the multipart field `file` and indexes it automatically.
+- `GET /api/documents` lists PDFs in persistent storage.
+- `DELETE /api/documents/<filename>` deletes a PDF and its indexed ChromaDB chunks.
+- `POST /api/query` accepts `{ "question": "..." }` and returns an answer with source filenames and page numbers.
 
 
 ---
