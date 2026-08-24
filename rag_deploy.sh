@@ -5,7 +5,13 @@ set -Eeuo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/Pratik02-07/rag-agent.git}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="${APP_DIR:-$SCRIPT_DIR}"
+if [ -z "${APP_DIR+x}" ]; then
+	if [ -f "${SCRIPT_DIR}/docker-compose.yml" ] || [ -f "${SCRIPT_DIR}/compose.yml" ]; then
+		APP_DIR="$SCRIPT_DIR"
+	else
+		APP_DIR="${HOME}/rag-agent"
+	fi
+fi
 
 log() { printf '\n[INFO] %s\n' "$1"; }
 success() { printf '[SUCCESS] %s\n' "$1"; }
@@ -145,11 +151,21 @@ clone_repository() {
 		cd -- "$APP_DIR"
 		return
 	fi
-	if [ -e "$APP_DIR" ]; then
-		fail "${APP_DIR} exists but is not a valid RAG Agent checkout."
+
+	if [ -d "$APP_DIR" ]; then
+		if git -C "$APP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+			log "Using existing Git checkout at ${APP_DIR}."
+			cd -- "$APP_DIR"
+			return
+		fi
+		if [ -n "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+			fail "${APP_DIR} exists and is not an empty Git checkout. Set APP_DIR to another directory or remove this unrelated directory."
+		fi
+	else
+		mkdir -p "$(dirname -- "$APP_DIR")"
 	fi
+
 	log "Cloning RAG Agent repository..."
-	mkdir -p "$(dirname -- "$APP_DIR")"
 	git clone "$REPO_URL" "$APP_DIR"
 	cd -- "$APP_DIR"
 	success "Repository cloned to ${APP_DIR}."
