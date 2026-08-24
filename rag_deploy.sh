@@ -286,9 +286,10 @@ deploy() {
 	provision_ollama_models
 
 	log "Starting RAG Agent containers..."
-	compose up -d
-	wait_for_http "Frontend" "http://127.0.0.1:3000/" 60
+	compose up -d backend
 	wait_for_http "Backend" "http://127.0.0.1:5000/api/health" 60
+	compose up -d frontend
+	wait_for_http "Frontend" "http://127.0.0.1:3000/" 60
 	success "Docker Compose started."
 }
 
