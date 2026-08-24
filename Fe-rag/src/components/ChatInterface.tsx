@@ -55,7 +55,13 @@ export default function ChatInterface() {
         body: JSON.stringify({ question }),
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result: { answer?: string; sources?: Source[]; error?: string } = {};
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        result = { error: `Backend returned an invalid response (${response.status}).` };
+      }
 
       if (response.ok) {
         const sources = (result.sources ?? []) as Source[];
