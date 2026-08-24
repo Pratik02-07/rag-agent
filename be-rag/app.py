@@ -24,8 +24,12 @@ ensure_storage_paths()
 def check_ollama_health() -> bool:
     try:
         client = Client(host=OLLAMA_BASE_URL)
-        models = client.list().get("models", [])
-        available_models = {model.get("name") for model in models}
+        response = client.list()
+        models = response.get("models", []) if isinstance(response, dict) else getattr(response, "models", [])
+        available_models = {
+            model.get("name") if isinstance(model, dict) else getattr(model, "model", None) or getattr(model, "name", None)
+            for model in models
+        }
         required_models = {OLLAMA_MODEL, EMBEDDING_MODEL}
         missing_models = {
             model
@@ -52,7 +56,7 @@ def check_chroma_health() -> bool:
             persist_directory=CHROMA_PATH,
             embedding_function=get_embedding_function(),
         )
-        db.get(include=[])
+        db.get(limit=1, include=["metadatas"])
         return True
     except Exception:
         logger.exception("Chroma health check failed")
@@ -91,6 +95,11 @@ def health_check():
     status = "ok" if ollama_ok and database_ok else "degraded"
     code = 200 if status == "ok" else 503
     return jsonify({"status": status, "ollama": ollama_ok, "database": database_ok}), code
+
+
+@app.route("/health/live", methods=["GET"])
+def liveness_check():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/health", methods=["GET"])
