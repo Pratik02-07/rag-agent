@@ -286,10 +286,27 @@ deploy() {
 }
 
 provision_ollama_models() {
-	log "Ensuring required Ollama models are available..."
-	docker exec ollama ollama pull "${OLLAMA_MODEL:-gemma2:2b}"
-	docker exec ollama ollama pull "${EMBEDDING_MODEL:-nomic-embed-text}"
+	local model
+	log "Checking required Ollama models..."
+	for model in "${OLLAMA_MODEL:-gemma2:2b}" "${EMBEDDING_MODEL:-nomic-embed-text}"; do
+		if docker exec ollama ollama list | awk 'NR > 1 { print $1 }' | grep -Fxq "$model"; then
+			success "Ollama model is already available: ${model}"
+		else
+			log "Ollama model is missing; pulling ${model}..."
+			docker exec ollama ollama pull "$model"
+		fi
+	done
 	success "Required Ollama models are available."
+}
+
+check_backend_health() {
+	log "Checking backend health..."
+	if ! curl --fail --silent --show-error --max-time 30 http://localhost:5000/api/health; then
+		printf '\n'
+		fail "Backend health check failed. Check the backend and Ollama container logs."
+	fi
+	printf '\n'
+	success "Backend health check passed."
 }
 
 check_containers() {
@@ -337,6 +354,7 @@ configure_nginx
 deploy
 provision_ollama_models
 check_containers
+check_backend_health
 check_nginx_proxy
 
 printf '\n[SUCCESS] RAG Agent deployment completed.\n'
