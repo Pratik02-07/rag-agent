@@ -1,5 +1,5 @@
 # dependencies
-node_modules/
+**/node_modules/
 /.pnp
 .pnp.js
 
@@ -7,7 +7,7 @@ node_modules/
 /coverage
 
 # next.js
-/.next/
+**/.next/
 /out/
 
 # production
@@ -30,6 +30,14 @@ __pycache__/
 *.pyc
 *.pyo
 *.env
-venv/
-data/
+**/venv/
+**/__pycache__/
+be-rag/data/
+be-rag/chroma/
+*.sqlite3
 .env
+Docker.md
+project_system
+swark-output
+Docs
+.venv

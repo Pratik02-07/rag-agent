@@ -1,103 +1,171 @@
-from flask import Flask, request, jsonify
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-import os
-import tempfile
-from werkzeug.utils import secure_filename
-from populate_DB import load_documents, split_documents, add_to_chroma
-from query_DB import query_rag
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.schema.document import Document
-import shutil
+from ollama import Client
+
+from config import CHROMA_PATH, DATA_PATH, OLLAMA_BASE_URL
+from generation import generate_answer
+from ingestion import delete_pdf_file, ingest_pdf_file, ensure_storage_paths, list_uploaded_files
+from retrieval import NoRelevantDocumentsError, retrieve_documents
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+ensure_storage_paths()
 
-UPLOAD_FOLDER = 'data'
-ALLOWED_EXTENSIONS = {'pdf'}
 
-# Ensure upload folder exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
+def check_ollama_health() -> bool:
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file part'}), 400
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-        
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
-            
-            # Process the uploaded PDF
-            try:
-                # Load and split the document
-                loader = PyPDFLoader(filepath)
-                documents = loader.load()
-                
-                from populate_DB import split_documents, add_to_chroma
-                chunks = split_documents(documents)
-                add_to_chroma(chunks)
-                
-                return jsonify({
-                    'message': 'File uploaded and processed successfully',
-                    'filename': filename,
-                    'chunks_added': len(chunks)
-                }), 200
-                
-            except Exception as e:
-                return jsonify({'error': f'Error processing PDF: {str(e)}'}), 500
-        
-        return jsonify({'error': 'Invalid file type. Only PDF files are allowed.'}), 400
-        
-    except Exception as e:
-        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+        client = Client(host=OLLAMA_BASE_URL)
+        client.list()
+        return True
+    except Exception:
+        logger.exception("Ollama health check failed")
+        return False
 
-@app.route('/chat', methods=['POST'])
-def chat():
+
+def check_chroma_health() -> bool:
     try:
-        data = request.get_json()
-        
-        if not data or 'message' not in data:
-            return jsonify({'error': 'No message provided'}), 400
-        
-        query_text = data['message']
-        
-        # Query the RAG system
-        response = query_rag(query_text)
-        
-        return jsonify({
-            'response': response,
-            'query': query_text
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Chat failed: {str(e)}'}), 500
+        from langchain_chroma import Chroma
+        from embeddings_function import get_embedding_function
 
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({
-        'message': 'RAG Backend API',
-        'endpoints': {
-            '/': 'API information',
-            '/health': 'Health check',
-            '/upload': 'Upload PDF files (POST)',
-            '/chat': 'Query the RAG system (POST)'
+        db = Chroma(
+            collection_name="langchain",
+            persist_directory=CHROMA_PATH,
+            embedding_function=get_embedding_function(),
+        )
+        db.get(include=[])
+        return True
+    except Exception:
+        logger.exception("Chroma health check failed")
+        return False
+
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return jsonify({"error": "File too large. Maximum upload size is 16MB."}), 413
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    return jsonify({"error": "Resource not found."}), 404
+
+
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify(
+        {
+            "message": "RAG Backend API",
+            "endpoints": {
+                "/api/health": "Health check",
+                "/api/query": "Ask a question about uploaded PDFs",
+                "/api/upload": "Upload a PDF to the knowledge base",
+                "/api/documents": "List or delete uploaded PDFs",
+            },
         }
-    }), 200
+    ), 200
 
-@app.route('/health', methods=['GET'])
+
+@app.route("/api/health", methods=["GET"])
 def health_check():
-    return jsonify({'status': 'healthy'}), 200
+    ollama_ok = check_ollama_health()
+    database_ok = check_chroma_health()
+    status = "ok" if ollama_ok and database_ok else "degraded"
+    code = 200 if status == "ok" else 503
+    return jsonify({"status": status, "ollama": ollama_ok, "database": database_ok}), code
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+
+@app.route("/health", methods=["GET"])
+def legacy_health_check():
+    return health_check()
+
+
+@app.route("/api/query", methods=["POST"])
+def query_documents():
+    payload = request.get_json(silent=True) or {}
+    question = (payload.get("question") or "").strip()
+
+    if not question:
+        return jsonify({"error": "Question is required."}), 400
+
+    try:
+        documents = retrieve_documents(question, k=4)
+        if not documents:
+            return jsonify({
+                "answer": "The information is not available in the uploaded documents.",
+                "sources": [],
+            }), 200
+
+        answer = generate_answer(question, [doc for doc, _ in documents])
+        sources = [
+            {
+                "file": doc.metadata.get("source", "unknown.pdf"),
+                "page": int(doc.metadata.get("page", 1)),
+            }
+            for doc, _ in documents
+        ]
+        return jsonify({"answer": answer, "sources": sources}), 200
+    except NoRelevantDocumentsError:
+        return jsonify({
+            "answer": "The information is not available in the uploaded documents.",
+            "sources": [],
+        }), 200
+    except Exception:
+        logger.exception("Query failed")
+        return jsonify({"error": "Unable to answer the question right now."}), 500
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload_file():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided."}), 400
+
+    uploaded_file = request.files["file"]
+    if uploaded_file.filename == "":
+        return jsonify({"error": "No file selected."}), 400
+
+    if not uploaded_file.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Only PDF files are allowed."}), 400
+
+    try:
+        result = ingest_pdf_file(uploaded_file)
+        return jsonify(result), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        logger.exception("PDF upload and indexing failed")
+        return jsonify({"error": "The PDF could not be processed."}), 500
+
+
+@app.route("/api/documents", methods=["GET"])
+def list_documents():
+    return jsonify({"documents": list_uploaded_files()}), 200
+
+
+@app.route("/api/documents/<path:filename>", methods=["DELETE"])
+def delete_document(filename: str):
+    try:
+        deleted_chunks = delete_pdf_file(filename)
+        return jsonify({
+            "message": "PDF deleted successfully",
+            "filename": filename,
+            "deleted_chunks": deleted_chunks,
+        }), 200
+    except FileNotFoundError:
+        return jsonify({"error": "PDF not found."}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        logger.exception("PDF deletion failed")
+        return jsonify({"error": "The PDF could not be deleted."}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)

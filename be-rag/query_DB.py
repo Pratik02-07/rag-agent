@@ -1,70 +1,17 @@
 import argparse
-import re
-from langchain_community.vectorstores import Chroma
-from langchain.prompts import ChatPromptTemplate
-from langchain_ollama import OllamaLLM
 
-from embeddings_function import get_embedding_function
-
-CHROMA_PATH = "chroma"
-
-PROMPT_TEMPLATE = """
-Answer the question based only on the following context:
-
-{context}
-
----
-
-Answer the question based on the above context: {question}
-
-Provide a clear, plain text answer without using markdown formatting like * or **.
-"""
+from generation import generate_answer
+from retrieval import retrieve_documents
 
 
-def clean_markdown(text: str) -> str:
-    """Remove markdown formatting from text."""
-    # Remove bold (**text**)
-    text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)
-    # Remove italic (*text*)
-    text = re.sub(r'\*([^\*]+)\*', r'\1', text)
-    # Remove remaining single asterisks
-    text = text.replace('*', '')
-    return text
-
-
-def main():
-    # Create CLI.
-    parser = argparse.ArgumentParser()
-    parser.add_argument("query_text", type=str, help="The query text.")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Query the indexed PDF corpus via the RAG pipeline.")
+    parser.add_argument("question", help="Question to ask the RAG system.")
     args = parser.parse_args()
-    query_text = args.query_text
-    query_rag(query_text)
 
-
-def query_rag(query_text: str):
-    # Prepare the DB.
-    embedding_function = get_embedding_function()
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
-
-    # Search the DB.
-    results = db.similarity_search_with_score(query_text, k=3)
-
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    prompt = prompt_template.format(context=context_text, question=query_text)
-    # print(prompt)
-
-    model = OllamaLLM(model="gemma2:2b")
-
-    response_text = model.invoke(prompt)
-    
-    # Clean markdown formatting from response
-    response_text = clean_markdown(response_text)
-
-    sources = [doc.metadata.get("id", None) for doc, _score in results]
-    formatted_response = f"Response: {response_text}\nSources: {sources}"
-    print(formatted_response)
-    return response_text
+    documents = retrieve_documents(args.question, k=4)
+    answer = generate_answer(args.question, [doc for doc, _ in documents])
+    print(answer)
 
 
 if __name__ == "__main__":

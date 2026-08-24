@@ -1,0 +1,73 @@
+services:
+  backend:
+    build:
+      context: ./be-rag
+    container_name: rag-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma2:2b
+      EMBEDDING_MODEL: nomic-embed-text
+      CHROMA_PATH: /app/chroma
+      DATA_PATH: /app/data
+    volumes:
+      - rag-chroma-data:/app/chroma
+      - rag-upload-data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health').read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - rag-network
+
+  frontend:
+    build:
+      context: ./fe-rag
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:5000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "5m"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      - rag-network
+
+volumes:
+  rag-chroma-data:
+  rag-upload-data:
+  ollama-data:
+
+networks:
+  rag-network:
+    driver: bridge
