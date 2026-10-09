@@ -148,5 +148,5 @@ The backend is available at [http://localhost:5000](http://localhost:5000):
 ## Contributors
 
 * [Omkar](https://github.com/omkarbhosale-dev)
-* [Rahul](https://github.com/rahulviralel)
+* [Rahul](https://github.com/rahulvirale)
 * [Pratik](https://github.com/Pratik02-07)
