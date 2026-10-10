@@ -1,7 +1,7 @@
 services:
   backend:
     build: null
-    image: ${REGISTRY:-docker.io/your-dockerhub-username}/rag-backend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-docker.io/pratik0207}/rag-backend:${IMAGE_TAG:-latest}
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma2:2b}
@@ -11,7 +11,7 @@ services:
 
   frontend:
     build: null
-    image: ${REGISTRY:-docker.io/your-dockerhub-username}/rag-frontend:${IMAGE_TAG:-latest}
+    image: ${REGISTRY:-docker.io/pratik0207}/rag-frontend:${IMAGE_TAG:-latest}
     environment:
       BACKEND_URL: http://backend:5000
 

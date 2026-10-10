@@ -84,12 +84,27 @@ rag-agent/
 
 The recommended way to run the complete application is Docker Compose. The stack includes the Next.js frontend, Flask/Gunicorn backend, ChromaDB persistence, uploaded-PDF persistence, and Ollama.
 
+#### Option A: Build and Run Locally
 From the repository root:
 
 ```bash
 docker compose up -d --build
 ```
 
+#### Option B: Run Using Pre-Built Docker Hub Images
+Pre-built and security-scanned images are published to Docker Hub automatically:
+
+| Service | Docker Hub Image | Port |
+| :--- | :--- | :--- |
+| **Backend** | `docker pull pratik0207/rag-agent:latest` | `5000` |
+| **Frontend** | `docker pull pratik0207/rag-frontend:latest` | `3000` |
+
+To run the production stack directly with pre-built images:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+#### Model Provisioning
 The deployment script downloads the required models automatically. For manual Docker Compose deployments, download them into the persistent Ollama volume:
 
 ```bash
