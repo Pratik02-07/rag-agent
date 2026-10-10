@@ -61,7 +61,7 @@ jobs:
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push rag-agent
+      - name: Build and push backend
         uses: docker/build-push-action@v6
         with:
           context: ./be-rag
@@ -69,6 +69,20 @@ jobs:
           tags: |
             docker.io/pratik0207/rag-agent:${{ steps.meta.outputs.tag }}
             docker.io/pratik0207/rag-agent:latest
+            docker.io/pratik0207/rag-backend:${{ steps.meta.outputs.tag }}
+            docker.io/pratik0207/rag-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Fe-rag
+          push: true
+          tags: |
+            docker.io/pratik0207/rag-frontend:${{ steps.meta.outputs.tag }}
+            docker.io/pratik0207/rag-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
 
