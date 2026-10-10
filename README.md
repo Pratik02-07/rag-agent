@@ -1,5 +1,7 @@
 # RAG AI Agent
 
+[![Security Scan & Push to Docker Hub](https://github.com/Pratik02-07/rag-agent/actions/workflows/deploy-dockerhub.yml/badge.svg)](https://github.com/Pratik02-07/rag-agent/actions/workflows/deploy-dockerhub.yml)
+
 A full-stack application that enables users to upload PDF documents and interact with them through a chat interface using Retrieval-Augmented Generation (RAG) technology.
 
 ![RAG AI Agent Architecture](image.png)
