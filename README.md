@@ -21,9 +21,6 @@ A full-stack application that enables users to upload PDF documents and interact
 
 RAG AI Agent combines the power of Retrieval-Augmented Generation (RAG) with an intuitive interface, enabling users to upload PDF documents and interact with them through natural, conversational queries. By leveraging advanced embeddings, intelligent document retrieval, and AI-powered generation, it delivers accurate, context-aware responses grounded in the source material.
 
-## Features
-Here’s a rewritten **Features** section that’s more engaging, technical, and directly emphasizes the RAG and backend improvements, plus the **Contributors** section you wanted.
-
 ---
 
 ## Features
