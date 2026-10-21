@@ -12,3 +12,7 @@ venv
 .vscode
 .idea
 *.log
+chroma/
+data/
+Dockerfile*
+.dockerignore

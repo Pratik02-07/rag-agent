@@ -41,3 +41,6 @@ project_system
 swark-output
 Docs
 .venv
+test
+be-rag/data.txt
+**/data.txt
